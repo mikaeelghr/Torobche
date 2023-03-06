@@ -1,3 +1,7 @@
+from collections import defaultdict
+
+import json
+
 import environ
 from django.views.generic.edit import BaseFormView
 from django.views.generic.base import RedirectView
@@ -8,8 +12,8 @@ from django.shortcuts import get_object_or_404
 from .documents import ProductDocument
 from .dtos import ProductCreateOrUpdateForm, ProductPriceChangeListDTO, CategoryItemDTO, ProductListItemDTO, \
     ProductListQuery
-from .models import ProductHistory, Category, Product, Shop
-from .usecase import suggest_category
+from .models import ProductHistory, Category, Product, Shop, BaseProduct
+from .usecase import suggest_category, suggest_base_product
 from .utils import replace_query
 
 env = environ.Env()
@@ -52,10 +56,19 @@ class CreateOrUpdate(BaseFormView):
     def form_valid(self, form):
         data = form.cleaned_data
         form.shop = get_object_or_404(Shop, domain=data.get('shop_domain'))
-        form.category_id = suggest_category(form.get('name'), form.get('features'))
+        form.category_id = suggest_category(data.get('name'), json.loads(data.get('features')))
+        print("result cat", form.category_id)
+        """form.base_product_id = suggest_base_product(data.get('name'),
+                                                    json.loads(data.get('features')),
+                                                    data.get('category_id'),
+                                                    data.get('price'))
+        """
+        x = [rr for rr in Category.objects.filter(id=form.category_id)][0]
+        form.base_product = BaseProduct.objects.create(name=data.get('name'),
+                                                       category=x)
         form.product, _ = Product.objects.update_or_create(name=data.get('name'), defaults=form.product_fields())
         ProductHistory.objects.create(**form.product_history_fields())
-        ProductDocument().update(form.product)
+        ProductDocument().update(form.base_product)
         return JsonResponse({"uid": form.product.uid})
 
     def form_invalid(self, form):
@@ -69,10 +82,36 @@ class Redirect(RedirectView):
 
 
 class CategoryList(ListView):
-    queryset = Category.objects.all()
+    queryset = Category.objects.filter(parent__isnull=True).all()
 
     def get_items(self, context):
         return [CategoryItemDTO(c).dict() for c in context['object_list']]
+
+
+class NestedCategoriesListView(ListView):
+    queryset = Category.objects.filter(parent__isnull=True).all()
+
+    def get_items(self, context):
+        parent_categories = context['object_list']
+        all_categories = Category.objects.all()
+        parents_map = defaultdict(set)
+        categories_data = {c.id: CategoryItemDTO(c).dict() for c in all_categories}
+        for category in all_categories:
+            parents_map[category.parent_id].add(category.id)
+
+        total_data = []
+        for category in parent_categories:
+            data = categories_data[category.id]
+            ct1s = parents_map[category.id]
+            ct1_data = []
+            for cid in ct1s:
+                ct2s = parents_map[cid]
+                c1_data = categories_data[cid]
+                c1_data['children'] = [c for c_id, c in categories_data.items() if c_id in ct2s]
+                ct1_data.append(c1_data)
+            data['children'] = ct1_data
+            total_data.append(data)
+        return total_data
 
 
 class PriceChange(ListView):
