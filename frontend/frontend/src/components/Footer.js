@@ -35,7 +35,7 @@ export default function StickyFooter() {
             >
                 <Container maxWidth="sm">
                     <Typography variant="body1">
-                        Roya Ghavami , MohammadAli HosseinNejad, Mikael Ghourbani
+                        Torobche
                     </Typography>
                 </Container>
             </Box>
