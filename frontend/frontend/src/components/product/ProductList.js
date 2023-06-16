@@ -30,7 +30,6 @@ export default function ProductList({productData, isLogged}) {
             url: url,
             headers: {
                 'Content-Type': 'application/json;charset=UTF-8',
-                'Access-Control-Allow-Origin': '*'
             },
 
         }).then(function (response) {
